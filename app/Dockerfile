@@ -32,10 +32,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # startup, so diesel_cli is no longer installed here either.
 RUN git clone https://github.com/mozilla-services/syncstorage-rs ./ \
     && git checkout ${GIT_COMMIT} \
+    # --no-default-features drops syncserver's defaults (mysql + py_verifier), so
+    # we select the backend explicitly on BOTH the storage and tokenserver crates.
+    # tokenserver-db/mysql is technically its own default, but we pass it anyway so
+    # the chosen backend is obvious and symmetric with the postgres branch.
     && if [ "$DATABASE_BACKEND" = "postgres" ]; then \
          FEATURES="--features=syncstorage-db/postgres --features=tokenserver-db/postgres"; \
        else \
-         FEATURES="--features=syncstorage-db/mysql"; \
+         FEATURES="--features=syncstorage-db/mysql --features=tokenserver-db/mysql"; \
        fi \
     && cargo install --path ./syncserver --no-default-features $FEATURES --locked \
     && cargo clean
