@@ -1,7 +1,9 @@
 services:
+  # ---- MySQL/MariaDB backend (activate with COMPOSE_PROFILES=mysql) ----
   mariadb:
     container_name: firefox_mariadb
     image: linuxserver/mariadb:10.6.13
+    profiles: ["mysql"]
     volumes:
       - ./data/config:/config
       - ./data/initdb.d/init.sql:/config/initdb.d/init.sql
@@ -11,20 +13,70 @@ services:
       MYSQL_USER: sync
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ---- PostgreSQL backend (activate with COMPOSE_PROFILES=postgres) ----
+  postgres:
+    container_name: firefox_postgres
+    image: postgres:18
+    profiles: ["postgres"]
+    volumes:
+      - ./data/postgres:/var/lib/postgresql
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sync
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: syncserver
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sync -d syncserver"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   syncserver:
     container_name: firefox_syncserver
-    build: ./app/
+    build:
+      context: ./app/
+      args:
+        # Which backend to compile into the image. Must match SYNC_BACKEND / the
+        # scheme of the DATABASE_URLs below.
+        DATABASE_BACKEND: ${SYNC_BACKEND:-postgres}
     restart: unless-stopped
     ports:
       - "8000:8000"
     depends_on:
-      - mariadb
+      # Only the DB matching the active COMPOSE_PROFILES actually starts; the
+      # other is skipped thanks to `required: false`.
+      mariadb:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     environment:
-      LOGLEVEL: info
-      SYNC_URL: ${SYNC_URL}
-      SYNC_CAPACITY: 10 # Max number of users that will be accepted
+      RUST_LOG: ${RUST_LOG:-info}
+      SYNC_HUMAN_LOGS: ${SYNC_HUMAN_LOGS:-true}
+      SYNC_HOST: "0.0.0.0"
+      SYNC_PORT: "8000"
       SYNC_MASTER_SECRET: ${SYNC_MASTER_SECRET}
-      METRICS_HASH_SECRET: ${METRICS_HASH_SECRET}
-      SYNC_SYNCSTORAGE_DATABASE_URL: mysql://sync:${MYSQL_PASSWORD}@mariadb:3306/syncstorage_rs
-      SYNC_TOKENSERVER_DATABASE_URL: mysql://sync:${MYSQL_PASSWORD}@mariadb:3306/tokenserver_rs
+      SYNC_SYNCSTORAGE__DATABASE_URL: ${SYNC_SYNCSTORAGE__DATABASE_URL}
+      SYNC_TOKENSERVER__DATABASE_URL: ${SYNC_TOKENSERVER__DATABASE_URL}
+      SYNC_TOKENSERVER__ENABLED: "true"
+      SYNC_TOKENSERVER__NODE_TYPE: ${SYNC_BACKEND:-postgres}
+      SYNC_TOKENSERVER__RUN_MIGRATIONS: "true"
+      SYNC_TOKENSERVER__INIT_NODE_URL: ${SYNC_URL}
+      SYNC_TOKENSERVER__FXA_METRICS_HASH_SECRET: ${METRICS_HASH_SECRET}
+      SYNC_TOKENSERVER__FXA_EMAIL_DOMAIN: "api.accounts.firefox.com"
+      SYNC_TOKENSERVER__FXA_OAUTH_SERVER_URL: "https://oauth.accounts.firefox.com"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/__heartbeat__"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
