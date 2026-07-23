@@ -8,8 +8,8 @@ I didn't have much luck with the existing documentation and wrote this for my ow
 
 syncstorage-rs picks its database backend at **compile time**, so each image ships a single backend. This repo supports two:
 
-- **PostgreSQL** (default): a single shared database for syncstorage and tokenserver.
-- **MySQL / MariaDB**: two separate databases.
+- **PostgreSQL** (default)
+- **MySQL / MariaDB**
 
 SQLite is **not** supported by syncstorage-rs upstream ([issue #498](https://github.com/mozilla-services/syncstorage-rs/issues/498)), and Spanner (which needs Google Cloud) is out of scope here.
 
@@ -84,8 +84,7 @@ curl -f http://localhost:8000/__heartbeat__
 In the course of setting this up, you may need to tear down and rebuild your instance. To remove persisted data and artifacts, run the following.
 
 ```bash
-docker compose down
-docker image rm app-syncserver
+docker compose down --rmi local
 docker builder prune -af
 rm -rf ./data/config ./data/postgres
 ```
