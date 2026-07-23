@@ -1,0 +1,6 @@
+# Keep LF line endings on files that run inside the Linux container, so builds
+# from a Windows checkout don't produce a CRLF shebang / scripts.
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+Dockerfile text eol=lf
+*.sql text eol=lf
